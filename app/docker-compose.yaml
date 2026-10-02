@@ -1,11 +1,19 @@
 services:
-  car-price-app:
-    image: naweep/car-price-app:latest   # <-- replace with your actual Docker Hub username
+  car-price-classifier:
+    image: naweep/car-price-classifier:latest
     restart: unless-stopped
+    environment:
+      - STUDENT_ID=st127031
+      # Serve from the bundled model file. The course MLflow server is
+      # unstable; set to "1" to load st127031-a3-model/Staging from the
+      # registry instead (falls back to the bundled file if unreachable).
+      - USE_MLFLOW_REGISTRY=0
     networks:
       - web
     labels:
       - "traefik.enable=true"
+      # Same host as the A2 deployment -- stop the A2 container first
+      # (docker compose down in its folder), or change this host.
       - "traefik.http.routers.st127031.rule=Host(`web-st127031.ml.brain.cs.ait.ac.th`)"
       - "traefik.http.routers.st127031.entrypoints=websecure"
       - "traefik.http.routers.st127031.tls=true"

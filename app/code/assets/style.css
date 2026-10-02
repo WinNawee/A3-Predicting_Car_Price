@@ -340,3 +340,102 @@ body {
   border: none !important;
   box-shadow: none !important;
 }
+
+/* ---------------------------------------------------------------
+   A3 additions: 4-column class cards and per-class probability bars
+   --------------------------------------------------------------- */
+.cv-grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
+
+.cv-grid-4 {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+
+@media (max-width: 860px) {
+  .cv-grid-3 { grid-template-columns: 1fr; }
+  .cv-grid-4 { grid-template-columns: repeat(2, 1fr); }
+}
+
+.cv-bar-track {
+  background: var(--panel-raised);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  height: 10px;
+  overflow: hidden;
+}
+
+.cv-bar-fill {
+  height: 100%;
+  background: var(--teal);
+  border-radius: 5px;
+  transition: width 0.4s ease;
+}
+
+.cv-bar-fill.cv-bar-top {
+  background: var(--brass);
+}
+
+/* ---------------------------------------------------------------
+   Dash 2.x dcc.Dropdown (react-select v1) on the dark theme.
+   The rules above target react-select v2+ class names
+   ("-singleValue", "-menu"), which Dash 2.17 doesn't use, so a
+   selected value rendered as #333 on the dark panel. Applies to
+   both the A2 and A3 forms.
+   --------------------------------------------------------------- */
+.cv-field .Select-control {
+  background: var(--panel-raised) !important;
+  border: 1px solid var(--line-strong) !important;
+  border-radius: 6px !important;
+  min-height: 38px;
+}
+
+.cv-field .Select.is-focused > .Select-control {
+  border-color: var(--brass) !important;
+  box-shadow: 0 0 0 3px rgba(232, 163, 61, 0.18) !important;
+}
+
+.cv-field .Select--single > .Select-control .Select-value .Select-value-label,
+.cv-field .Select-value-label {
+  color: var(--paper) !important;
+}
+
+.cv-field .Select-placeholder {
+  color: var(--paper-dim) !important;
+}
+
+.cv-field .Select-arrow {
+  border-top-color: var(--paper-dim) !important;
+}
+
+.cv-field .Select-menu-outer {
+  background: var(--panel-raised) !important;
+  border: 1px solid var(--line-strong) !important;
+  border-radius: 0 0 6px 6px;
+  z-index: 10;
+}
+
+.cv-field .VirtualizedSelectOption {
+  background: var(--panel-raised);
+  color: var(--paper);
+}
+
+.cv-field .VirtualizedSelectFocusedOption {
+  background: rgba(232, 163, 61, 0.18);
+  color: var(--paper);
+}
+
+/* Narrow screens: four nav links no longer fit on one row beside the
+   brand, so let the bar wrap instead of overflowing horizontally. */
+.cv-nav-link { white-space: nowrap; }
+
+@media (max-width: 640px) {
+  .cv-navbar { flex-wrap: wrap; gap: 10px; padding: 12px 16px; }
+  .cv-nav-links { flex-wrap: wrap; width: 100%; }
+  .cv-nav-link { padding: 6px 10px; font-size: 0.85rem; }
+  .cv-page { padding: 32px 16px 60px; }
+}

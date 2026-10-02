@@ -1,53 +1,86 @@
 """
-Home page — explains the project and how the two models compare, honestly:
-the from-scratch model doesn't beat the original on raw accuracy, so this
-page leads with what it actually offers instead (transparency, a fully
-tracked hyperparameter search) rather than overstating it.
+Home page — the three models side by side.
+
+A1 and A2 predict a price (regression); A3 predicts which of four price
+bands a car falls into (classification), so their scores aren't directly
+comparable — each card shows the metric that fits its task.
 """
 
 import dash
 from dash import html, dcc
+import model_inference as mi
 
 dash.register_page(__name__, path="/", name="Home")
+
+bundle = mi.load_bundle()
+CLASS_LABELS = bundle["class_labels"]
+CLASS_RANGES = bundle["class_price_ranges"]
 
 hero = html.Div(
     [
         html.H1("CarValuate"),
         html.P(
-            "Two ways to estimate a used car's resale value from the same dataset: a "
-            "scikit-learn pipeline from Assignment 1, and a linear regression model "
-            "written from scratch for Assignment 2: gradient descent implemented by "
-            "hand, with Xavier initialization, optional momentum, and a "
-            "cross-validated search over 180 configurations tracked in MLflow."
+            "Three ways to value a used car from the same dataset: a scikit-learn "
+            "pipeline from Assignment 1, a linear regression written from scratch for "
+            "Assignment 2, and new in Assignment 3 (a multinomial logistic regression), "
+            "also written from scratch, that predicts which of four price bands a car "
+            "falls into instead of an exact price."
         ),
     ],
     className="cv-hero",
 )
 
+
+def model_card(title, subtitle, value, value_label, href, link_text, accent=False):
+    return html.Div(
+        [
+            html.Div(title, className="cv-group-title"),
+            html.Div(subtitle, style={"color": "var(--paper-dim)", "fontSize": "0.85rem", "marginBottom": "16px"}),
+            html.Div(value, className="cv-readout-value",
+                     style={"fontSize": "1.9rem", "color": "var(--brass)" if accent else "var(--paper)"}),
+            html.Div(value_label, className="cv-readout-label"),
+            dcc.Link(link_text, href=href, className="cv-nav-link",
+                     style={"display": "inline-block", "marginTop": "16px", "padding": "8px 0",
+                            **({"color": "var(--brass)"} if accent else {})}),
+        ],
+        className="cv-panel",
+    )
+
+
 model_cards = html.Div(
     [
+        model_card("A1 model", "scikit-learn pipeline · regression", "~0.92", "Test R²",
+                   "/old", "Open A1 model →"),
+        model_card("A2 model", "from-scratch linear regression", "0.875", "Test R²",
+                   "/new", "Open A2 model →"),
+        model_card("A3 classifier", "from-scratch logistic regression · 4 classes", "0.730",
+                   "Test accuracy (macro F1 0.726)", "/predict", "Open A3 classifier →", accent=True),
+    ],
+    className="cv-grid-3",
+    style={"marginBottom": "32px"},
+)
+
+class_cards = html.Div(
+    [
+        html.Div("A3 price classes", className="cv-group-title"),
         html.Div(
             [
-                html.Div("Original model", className="cv-group-title"),
-                html.Div("scikit-learn pipeline", style={"color": "var(--paper-dim)", "fontSize": "0.85rem", "marginBottom": "16px"}),
-                html.Div("~0.92", className="cv-readout-value", style={"fontSize": "1.9rem", "color": "var(--paper)"}),
-                html.Div("Test R²", className="cv-readout-label"),
-                dcc.Link("Open original model →", href="/old", className="cv-nav-link", style={"display": "inline-block", "marginTop": "16px", "padding": "8px 0"}),
+                html.Div(
+                    [
+                        html.Div(f"Class {c}", style={"color": "var(--paper-dim)", "fontSize": "0.8rem"}),
+                        html.Div(CLASS_LABELS[c], style={"fontSize": "1.15rem", "fontWeight": 700,
+                                                          "color": "var(--paper)", "margin": "4px 0"}),
+                        html.Div(CLASS_RANGES[c], style={"color": "var(--paper-dim)", "fontSize": "0.85rem"}),
+                    ],
+                    style={"background": "var(--panel-raised)", "border": "1px solid var(--line)",
+                           "borderRadius": "8px", "padding": "16px"},
+                )
+                for c in sorted(CLASS_LABELS.keys())
             ],
-            className="cv-panel",
-        ),
-        html.Div(
-            [
-                html.Div("New model", className="cv-group-title"),
-                html.Div("from-scratch gradient descent", style={"color": "var(--paper-dim)", "fontSize": "0.85rem", "marginBottom": "16px"}),
-                html.Div("0.875", className="cv-readout-value", style={"fontSize": "1.9rem"}),
-                html.Div("Test R²", className="cv-readout-label"),
-                dcc.Link("Open new model →", href="/new", className="cv-nav-link", style={"display": "inline-block", "marginTop": "16px", "padding": "8px 0", "color": "var(--brass)"}),
-            ],
-            className="cv-panel",
+            className="cv-grid-4",
         ),
     ],
-    className="cv-grid",
+    className="cv-panel",
     style={"marginBottom": "32px"},
 )
 
@@ -55,23 +88,24 @@ explanation = html.Div(
     [
         html.Div("Which one should you use?", className="cv-group-title"),
         html.P(
-            "Honestly: the original model is more accurate (R² ≈ 0.92 vs. 0.875). It's a "
-            "scikit-learn ensemble, which naturally captures non-linear patterns in the data "
-            "that a plain linear model can't. The new model isn't presented here as more "
-            "accurate; what it offers instead is full transparency into how the prediction is "
-            "made.",
+            "If you need a single price estimate, the A1 model is the most accurate "
+            "(R² ≈ 0.92 vs. 0.875 for A2): it's a scikit-learn ensemble, which captures "
+            "non-linear patterns a plain linear model can't. A2's value is transparency ("
+            "every coefficient is inspectable, and it was tuned through a fully tracked "
+            "cross-validated search in MLflow.)",
             style={"color": "var(--paper-dim)", "lineHeight": "1.7", "marginBottom": "14px"},
         ),
         html.P(
-            "Every coefficient in the new model is inspectable. Its feature-importance chart "
-            "shows exactly which inputs push the price up or down, and by how much. It was "
-            "also tuned by comparing 180 configurations (model type, batch method, weight "
-            "initialization, learning rate, with and without momentum, including a polynomial "
-            "variant) via cross-validation, with every run logged in MLflow.",
+            "The A3 classifier answers a price band and shows "
+            "how confident it is in each band. It was selected on a held-out validation "
+            "set, with duplicate listings removed before splitting, and the test set was "
+            "scored exactly once, so its 0.730 accuracy is an honest estimate. Every "
+            "precision / recall / F1 metric behind it is implemented from scratch and "
+            "cross-checked against scikit-learn.",
             style={"color": "var(--paper-dim)", "lineHeight": "1.7"},
         ),
     ],
     className="cv-panel",
 )
 
-layout = html.Div([hero, model_cards, explanation], className="cv-page")
+layout = html.Div([hero, model_cards, class_cards, explanation], className="cv-page")

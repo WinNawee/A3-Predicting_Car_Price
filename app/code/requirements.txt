@@ -1,12 +1,14 @@
-# Pinned to match the conda env ("ML") the model was trained/pickled in.
-# numpy in particular MUST match: numpy 2.x and 1.x use different internal
-# pickle formats for RandomState/BitGenerator objects (the random_state=SEED
-# baked into the fitted estimators), so a mismatch fails at joblib.load with
-# "... is not a known BitGenerator module" rather than a normal version error.
+# Pinned to match the conda env ("ml", same as A2) that the model bundle
+# was pickled in. scikit-learn in particular must match: loading a
+# ColumnTransformer pickled by a different version raises
+# InconsistentVersionWarning and can silently give wrong results.
 dash==2.17.1
 dash-bootstrap-components==1.6.0
 pandas==2.2.3
 numpy==2.0.2
 scikit-learn==1.6.0
 joblib==1.4.2
+mlflow==3.1.4
+sqlalchemy<2.1  # mlflow 3.1.4 breaks on SQLAlchemy 2.1+
 gunicorn==22.0.0
+pytest>=7.4

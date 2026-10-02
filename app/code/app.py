@@ -1,8 +1,11 @@
 """
-Car price predictor — Dash multi-page app.
-Three pages sharing one instrument-panel-styled nav bar: a home page
-explaining the comparison, the original scikit-learn model (/old), and
-the from-scratch A2 model (/new).
+CarValuate — Dash multi-page app covering Assignments 1-3.
+
+Four pages share one instrument-panel-styled nav bar:
+  /         home page comparing all three models
+  /old      A1 model (scikit-learn pipeline, regression)        -- unchanged from A2
+  /new      A2 model (from-scratch linear regression)           -- unchanged from A2
+  /predict  A3 model (from-scratch multinomial logistic regression, 4 price classes)
 """
 
 import dash
@@ -13,7 +16,7 @@ app = Dash(
     __name__,
     use_pages=True,
     external_stylesheets=[
-        dbc.themes.BOOTSTRAP,  # required by the Original Model page (dbc.Card, dbc.Row, ...)
+        dbc.themes.BOOTSTRAP,  # required by the A1 page (dbc.Card, dbc.Row, ...)
         "https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap",
         "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css",
     ],
@@ -21,6 +24,13 @@ app = Dash(
 )
 app.title = "CarValuate | AI Price Predictor"
 server = app.server
+
+NAV_ITEMS = [
+    ("nav-home", "Home", "/"),
+    ("nav-old", "A1 model", "/old"),
+    ("nav-new", "A2 model", "/new"),
+    ("nav-predict", "A3 classifier", "/predict"),
+]
 
 navbar = html.Div(
     [
@@ -30,11 +40,7 @@ navbar = html.Div(
             className="cv-brand",
         ),
         html.Div(
-            [
-                dcc.Link("Home", href="/", id="nav-home", className="cv-nav-link"),
-                dcc.Link("Original model", href="/old", id="nav-old", className="cv-nav-link"),
-                dcc.Link("New model", href="/new", id="nav-new", className="cv-nav-link"),
-            ],
+            [dcc.Link(label, href=href, id=id_, className="cv-nav-link") for id_, label, href in NAV_ITEMS],
             className="cv-nav-links",
         ),
     ],
@@ -51,17 +57,12 @@ app.layout = html.Div(
 
 
 @dash.callback(
-    Output("nav-home", "className"),
-    Output("nav-old", "className"),
-    Output("nav-new", "className"),
+    [Output(id_, "className") for id_, _, _ in NAV_ITEMS],
     Input("cv-url", "pathname"),
 )
 def highlight_active_tab(pathname):
     base = "cv-nav-link"
-    home_cls = f"{base} active" if pathname == "/" else base
-    old_cls = f"{base} active" if pathname == "/old" else base
-    new_cls = f"{base} active" if pathname == "/new" else base
-    return home_cls, old_cls, new_cls
+    return [f"{base} active" if pathname == href else base for _, _, href in NAV_ITEMS]
 
 
 if __name__ == "__main__":
