@@ -1,18 +1,23 @@
 name: CI/CD - Car Price Classifier App
 
 # On every push: run the unit tests.
-# On a push to main, and only if the tests pass: build the Docker image,
-# push it to Docker Hub, and redeploy it on the ml-brain server with
-# docker compose (A3 Task 3, Objective 3).
+# On a push to main, and only if the tests pass: build the Docker image and
+# push it to Docker Hub (A3 Task 3, Objective 3).
 #
-# The deploy job needs these repository secrets
-# (Settings > Secrets and variables > Actions):
-#   DOCKERHUB_USERNAME, DOCKERHUB_TOKEN   Docker Hub login (use an access token)
-#   SSH_HOST, SSH_USER, SSH_KEY           the server that runs docker compose
-#   SSH_PROXY_HOST, SSH_PROXY_USER        optional: jump host, if the server is
-#                                         only reachable through one (leave unset
-#                                         to connect directly)
-# If the secrets are not set yet, the deploy job skips with a notice
+# How the new image reaches the ml-brain server:
+#   ml-brain is only reachable from inside CSIM (or through the bazooka jump
+#   host), so GitHub's runners cannot SSH into it. Instead the server pulls:
+#   a cron job on ml-brain runs `docker compose pull && docker compose up -d`
+#   every 5 minutes (see app/deploy/auto_update.sh). Because the image is only
+#   pushed when the tests pass, a failing commit never reaches the server.
+#
+# Repository secrets (Settings > Secrets and variables > Actions):
+#   DOCKERHUB_USERNAME, DOCKERHUB_TOKEN   required for the deploy job
+#                                         (use a Docker Hub access token)
+#   SSH_HOST, SSH_USER, SSH_KEY           optional: if set, the job also SSHes
+#   SSH_PROXY_HOST, SSH_PROXY_USER,       into the server and restarts the app
+#   SSH_PROXY_PASSWORD                    right away instead of waiting for cron
+# If the Docker Hub secrets are not set, the deploy job skips with a notice
 # instead of failing.
 
 on:
@@ -52,7 +57,7 @@ jobs:
       IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/car-price-classifier
       DEPLOY_DIR: a3-car-price
     steps:
-      - name: Check that deploy secrets are set
+      - name: Check which deploy secrets are set
         id: secrets
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -61,27 +66,32 @@ jobs:
           SSH_USER: ${{ secrets.SSH_USER }}
           SSH_KEY: ${{ secrets.SSH_KEY }}
         run: |
-          if [ -n "$DOCKERHUB_USERNAME" ] && [ -n "$DOCKERHUB_TOKEN" ] && \
-             [ -n "$SSH_HOST" ] && [ -n "$SSH_USER" ] && [ -n "$SSH_KEY" ]; then
-            echo "ready=true" >> "$GITHUB_OUTPUT"
+          if [ -n "$DOCKERHUB_USERNAME" ] && [ -n "$DOCKERHUB_TOKEN" ]; then
+            echo "docker=true" >> "$GITHUB_OUTPUT"
           else
-            echo "ready=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::Deploy skipped: add the DOCKERHUB_* and SSH_* secrets to enable automatic deployment."
+            echo "docker=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Deploy skipped: add DOCKERHUB_USERNAME and DOCKERHUB_TOKEN to push the image."
+          fi
+          if [ -n "$SSH_HOST" ] && [ -n "$SSH_USER" ] && [ -n "$SSH_KEY" ]; then
+            echo "ssh=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ssh=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No SSH secrets: the server picks up the new image with its cron job (within 5 minutes)."
           fi
 
       - name: Check out repository
-        if: steps.secrets.outputs.ready == 'true'
+        if: steps.secrets.outputs.docker == 'true'
         uses: actions/checkout@v4
 
       - name: Log in to Docker Hub
-        if: steps.secrets.outputs.ready == 'true'
+        if: steps.secrets.outputs.docker == 'true'
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build and push image
-        if: steps.secrets.outputs.ready == 'true'
+        if: steps.secrets.outputs.docker == 'true'
         uses: docker/build-push-action@v5
         with:
           context: ./app
@@ -92,29 +102,31 @@ jobs:
             ${{ env.IMAGE }}:${{ github.sha }}
 
       - name: Copy docker-compose.yaml to the server
-        if: steps.secrets.outputs.ready == 'true'
+        if: steps.secrets.outputs.docker == 'true' && steps.secrets.outputs.ssh == 'true'
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
           proxy_host: ${{ secrets.SSH_PROXY_HOST }}
-          proxy_username: ${{ secrets.SSH_PROXY_USER }}
+          proxy_username: ${{ secrets.SSH_PROXY_USER || secrets.SSH_USER }}
           proxy_key: ${{ secrets.SSH_KEY }}
+          proxy_password: ${{ secrets.SSH_PROXY_PASSWORD }}
           source: app/docker-compose.yaml
           target: ${{ env.DEPLOY_DIR }}
           strip_components: 1
 
       - name: Pull the new image and restart the container
-        if: steps.secrets.outputs.ready == 'true'
+        if: steps.secrets.outputs.docker == 'true' && steps.secrets.outputs.ssh == 'true'
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
           proxy_host: ${{ secrets.SSH_PROXY_HOST }}
-          proxy_username: ${{ secrets.SSH_PROXY_USER }}
+          proxy_username: ${{ secrets.SSH_PROXY_USER || secrets.SSH_USER }}
           proxy_key: ${{ secrets.SSH_KEY }}
+          proxy_password: ${{ secrets.SSH_PROXY_PASSWORD }}
           script: |
             cd ${{ env.DEPLOY_DIR }}
             docker compose pull

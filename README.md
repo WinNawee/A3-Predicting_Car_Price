@@ -22,6 +22,8 @@ predicts which band a car belongs to.
 └── app/                                  # web application (Task 3)
     ├── Dockerfile
     ├── docker-compose.yaml
+    ├── deploy/
+    │   └── auto_update.sh                # cron job on ml-brain: pull new image, restart
     ├── tests/
     │   └── test_model.py                 # unit tests (Task 3, Objective 3)
     └── code/
@@ -165,19 +167,30 @@ The model is saved as a small MLflow pyfunc that only contains `prep`
      values in 0 to 3, and the probabilities have shape `(m, 4)` with each
      row adding up to 1.
 * `.github/workflows/ci-cd.yml` runs the tests on every push. If they
-  pass, a second job (only on a push to `main`) deploys the app:
-  1. builds the Docker image and pushes it to Docker Hub,
-  2. copies `app/docker-compose.yaml` to the server,
-  3. connects over SSH and runs `docker compose pull` and
-     `docker compose up -d`.
+  pass, a second job (only on a push to `main`) builds the Docker image
+  and pushes it to Docker Hub (`naweep/car-price-classifier:latest`).
+  It needs the repository secrets `DOCKERHUB_USERNAME` and
+  `DOCKERHUB_TOKEN`. If they are not set, the job is skipped with a
+  notice instead of failing.
+* **How the new version reaches the server.** `ml-brain` can only be
+  reached from inside CSIM (or through the `bazooka` jump host), so
+  GitHub's runners cannot SSH into it. The server pulls instead: a cron
+  job on `ml-brain` runs `app/deploy/auto_update.sh` every 5 minutes,
+  which does `docker compose pull` and `docker compose up -d`. Compose
+  only recreates the container when the image has changed. Since the
+  image is pushed only after the tests pass, a commit that fails the
+  tests never reaches the live site.
 
-  It needs these repository secrets: `DOCKERHUB_USERNAME`,
-  `DOCKERHUB_TOKEN`, `SSH_HOST`, `SSH_USER`, `SSH_KEY`, and optionally
-  `SSH_PROXY_HOST` / `SSH_PROXY_USER` if the server is only reachable
-  through a jump host. If they are not set, the deploy job is skipped
-  with a notice instead of failing. The image name in
-  `docker-compose.yaml` (`naweep/car-price-classifier`) has to match the
-  Docker Hub username.
+  ```
+  git push -> GitHub Actions: pytest -> build + push image -> Docker Hub
+                                                                 |
+  ml-brain (cron, every 5 min): docker compose pull && up -d  <--+
+  ```
+
+  The workflow can also SSH into the server and restart the app right
+  away if `SSH_HOST`, `SSH_USER`, `SSH_KEY` (and `SSH_PROXY_HOST` for
+  the jump host) are set. I did not set these, so deployment goes
+  through the cron job.
 
 ## How to run
 
@@ -226,11 +239,21 @@ pytest app/tests/ -v
 
 ### Deployment
 
-GitHub Actions does this automatically after the tests pass (see CI/CD
-above). Manually it is the same as A2: build the image, push it to Docker
-Hub (`naweep/car-price-classifier:latest`), and run `docker-compose.yaml`
-on the `ml-brain` server. The compose file joins the existing `web` network
-and adds the Traefik labels (`entrypoints=websecure`,
+Set up once on `ml-brain` (from inside CSIM):
+
+```bash
+ssh st127031@192.41.170.25
+mkdir -p ~/a3-car-price && cd ~/a3-car-price
+curl -fsSLO https://raw.githubusercontent.com/WinNawee/A3-Predicting_Car_Price/main/app/docker-compose.yaml
+curl -fsSLO https://raw.githubusercontent.com/WinNawee/A3-Predicting_Car_Price/main/app/deploy/auto_update.sh
+chmod +x auto_update.sh
+./auto_update.sh          # first deploy
+(crontab -l 2>/dev/null; echo "*/5 * * * * $HOME/a3-car-price/auto_update.sh >> $HOME/a3-car-price/auto_update.log 2>&1") | crontab -
+```
+
+After that every push to `main` that passes the tests is live within
+about 5 minutes. The compose file joins the existing `web` network and
+adds the Traefik labels (`entrypoints=websecure`,
 `certresolver=letsencrypt`), so no port is published directly. It uses
 the same host as A2 (`web-st127031.ml.brain.cs.ait.ac.th`), so the A2
-container has to be stopped first.
+container was stopped first.
