@@ -90,13 +90,23 @@ def softmax(z):
     return e / np.sum(e, axis=1, keepdims=True)
 
 
+def group_brand(brand, common_brands):
+    """Same brand grouping as in training: a brand keeps its name only if
+    it was common in the training set, everything else (rare or never
+    seen) becomes "Other". Upper/lower case is ignored, so "maruti" works."""
+    lookup = {b.lower(): b for b in common_brands}
+    return lookup.get(str(brand).strip().lower(), "Other")
+
+
 def predict(bundle, raw_df: pd.DataFrame):
     """raw_df: DataFrame with columns matching bundle['feature_cols']
     (year, km_driven, mileage, engine, max_power, seats, owner [already
-    ordinal-encoded as an int], fuel, transmission, seller_type, brand).
+    encoded as an int], fuel, transmission, seller_type, brand as typed).
 
     Returns (predicted_class_array, probability_matrix)."""
-    X = bundle["prep"].transform(raw_df[bundle["feature_cols"]])
+    X_raw = raw_df[bundle["feature_cols"]].copy()
+    X_raw["brand"] = X_raw["brand"].apply(lambda b: group_brand(b, bundle["common_brands"]))
+    X = bundle["prep"].transform(X_raw)
     if hasattr(X, "toarray"):
         X = X.toarray()
     X = np.concatenate([np.ones((X.shape[0], 1)), X], axis=1)

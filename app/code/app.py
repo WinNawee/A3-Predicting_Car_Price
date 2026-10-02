@@ -1,5 +1,5 @@
 """
-CarValuate — Dash multi-page app covering Assignments 1-3.
+CarValuate: Dash multi-page app covering Assignments 1-3.
 
 Four pages share one instrument-panel-styled nav bar:
   /         home page comparing all three models

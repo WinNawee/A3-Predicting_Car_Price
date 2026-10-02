@@ -1,5 +1,5 @@
 """
-Predict page — the classifier form. Loads the model from the MLflow
+Predict page: the classifier form. Loads the model from the MLflow
 Model Registry when reachable, falling back to the local bundle
 (app/code/model/car_price_classifier.pkl) saved by the training
 notebook.
@@ -115,7 +115,7 @@ readout = html.Div(
         dcc.Loading(
             html.Div(
                 html.Div(
-                    "Fill in the spec sheet and predict the price class and the reading "
+                    "Fill in the spec sheet and predict the price class. The result "
                     "will appear here.",
                     className="cv-readout-empty",
                 ),

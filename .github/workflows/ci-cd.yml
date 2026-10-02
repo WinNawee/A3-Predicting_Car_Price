@@ -1,0 +1,122 @@
+name: CI/CD - Car Price Classifier App
+
+# On every push: run the unit tests.
+# On a push to main, and only if the tests pass: build the Docker image,
+# push it to Docker Hub, and redeploy it on the ml-brain server with
+# docker compose (A3 Task 3, Objective 3).
+#
+# The deploy job needs these repository secrets
+# (Settings > Secrets and variables > Actions):
+#   DOCKERHUB_USERNAME, DOCKERHUB_TOKEN   Docker Hub login (use an access token)
+#   SSH_HOST, SSH_USER, SSH_KEY           the server that runs docker compose
+#   SSH_PROXY_HOST, SSH_PROXY_USER        optional: jump host, if the server is
+#                                         only reachable through one (leave unset
+#                                         to connect directly)
+# If the secrets are not set yet, the deploy job skips with a notice
+# instead of failing.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+  workflow_dispatch: {}
+
+jobs:
+  test:
+    name: Run unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r app/code/requirements.txt
+
+      - name: Run unit tests (pytest)
+        run: pytest app/tests/ -v
+
+  deploy:
+    name: Build, push and deploy
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    env:
+      IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/car-price-classifier
+      DEPLOY_DIR: a3-car-price
+    steps:
+      - name: Check that deploy secrets are set
+        id: secrets
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+        run: |
+          if [ -n "$DOCKERHUB_USERNAME" ] && [ -n "$DOCKERHUB_TOKEN" ] && \
+             [ -n "$SSH_HOST" ] && [ -n "$SSH_USER" ] && [ -n "$SSH_KEY" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Deploy skipped: add the DOCKERHUB_* and SSH_* secrets to enable automatic deployment."
+          fi
+
+      - name: Check out repository
+        if: steps.secrets.outputs.ready == 'true'
+        uses: actions/checkout@v4
+
+      - name: Log in to Docker Hub
+        if: steps.secrets.outputs.ready == 'true'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push image
+        if: steps.secrets.outputs.ready == 'true'
+        uses: docker/build-push-action@v5
+        with:
+          context: ./app
+          file: ./app/Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ github.sha }}
+
+      - name: Copy docker-compose.yaml to the server
+        if: steps.secrets.outputs.ready == 'true'
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          proxy_host: ${{ secrets.SSH_PROXY_HOST }}
+          proxy_username: ${{ secrets.SSH_PROXY_USER }}
+          proxy_key: ${{ secrets.SSH_KEY }}
+          source: app/docker-compose.yaml
+          target: ${{ env.DEPLOY_DIR }}
+          strip_components: 1
+
+      - name: Pull the new image and restart the container
+        if: steps.secrets.outputs.ready == 'true'
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          proxy_host: ${{ secrets.SSH_PROXY_HOST }}
+          proxy_username: ${{ secrets.SSH_PROXY_USER }}
+          proxy_key: ${{ secrets.SSH_KEY }}
+          script: |
+            cd ${{ env.DEPLOY_DIR }}
+            docker compose pull
+            docker compose up -d
+            docker image prune -f

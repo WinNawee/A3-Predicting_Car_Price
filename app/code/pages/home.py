@@ -1,9 +1,9 @@
 """
-Home page — the three models side by side.
+Home page: the three models side by side.
 
 A1 and A2 predict a price (regression); A3 predicts which of four price
 bands a car falls into (classification), so their scores aren't directly
-comparable — each card shows the metric that fits its task.
+comparable. Each card shows the metric that fits its task.
 """
 
 import dash

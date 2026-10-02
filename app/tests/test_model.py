@@ -67,11 +67,21 @@ def test_model_accepts_expected_input(bundle, sample_rows):
     preds_na, probs_na = mi.predict(bundle, rows_with_na)
     assert preds_na is not None and probs_na is not None
 
-    # should not raise on a brand never seen during training
+    # a brand never seen in training is treated exactly like "Other"
     rows_unknown_brand = sample_rows.copy()
     rows_unknown_brand.loc[0, "brand"] = "TotallyMadeUpBrandXYZ"
-    preds_unk, probs_unk = mi.predict(bundle, rows_unknown_brand)
-    assert preds_unk is not None and probs_unk is not None
+    rows_other = sample_rows.copy()
+    rows_other.loc[0, "brand"] = "Other"
+    _, probs_unk = mi.predict(bundle, rows_unknown_brand)
+    _, probs_other = mi.predict(bundle, rows_other)
+    np.testing.assert_allclose(probs_unk, probs_other)
+
+    # brand matching ignores upper/lower case
+    rows_lower = sample_rows.copy()
+    rows_lower["brand"] = rows_lower["brand"].str.lower()
+    _, probs_lower = mi.predict(bundle, rows_lower)
+    _, probs_orig = mi.predict(bundle, sample_rows)
+    np.testing.assert_allclose(probs_lower, probs_orig)
 
     # a required column missing entirely should fail loudly, not
     # silently produce a wrong answer
