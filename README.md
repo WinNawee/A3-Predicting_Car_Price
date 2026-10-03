@@ -69,7 +69,9 @@ Preprocessing is the same as A1/A2: the units are removed from
 `owner` is an ordered number, missing values
 are filled with `SimpleImputer` fitted on the training set, and only
 Diesel/Petrol cars are kept (CNG/LPG are about 1% of the data and use a
-different mileage unit).
+different mileage unit). One difference from A2: the 5 Test Drive Car
+rows are kept (A2 removed them). They are about 0.07% of the data, so
+they have almost no effect on the results.
 
 Brands with at least 20 cars in the training set keep their name, and
 every other brand becomes `"Other"`, including brands that never appear
