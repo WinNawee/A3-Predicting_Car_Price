@@ -7,8 +7,8 @@ name: CI/CD - Car Price Classifier App
 # How the new image reaches the ml-brain server:
 #   ml-brain is only reachable from inside CSIM (or through the bazooka jump
 #   host), so GitHub's runners cannot SSH into it. Instead the server pulls:
-#   a cron job on ml-brain runs `docker compose pull && docker compose up -d`
-#   every 5 minutes (see app/deploy/auto_update.sh). Because the image is only
+#   the "updater" service in app/docker-compose.yaml runs `docker compose pull`
+#   and `docker compose up -d` on ml-brain every 5 minutes. Because the image is only
 #   pushed when the tests pass, a failing commit never reaches the server.
 #
 # Repository secrets (Settings > Secrets and variables > Actions):
@@ -16,7 +16,7 @@ name: CI/CD - Car Price Classifier App
 #                                         (use a Docker Hub access token)
 #   SSH_HOST, SSH_USER, SSH_KEY           optional: if set, the job also SSHes
 #   SSH_PROXY_HOST, SSH_PROXY_USER,       into the server and restarts the app
-#   SSH_PROXY_PASSWORD                    right away instead of waiting for cron
+#   SSH_PROXY_PASSWORD                    right away instead of waiting for the updater
 # If the Docker Hub secrets are not set, the deploy job skips with a notice
 # instead of failing.
 
@@ -76,7 +76,7 @@ jobs:
             echo "ssh=true" >> "$GITHUB_OUTPUT"
           else
             echo "ssh=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::No SSH secrets: the server picks up the new image with its cron job (within 5 minutes)."
+            echo "::notice::No SSH secrets: the server's updater picks up the new image within 5 minutes."
           fi
 
       - name: Check out repository
@@ -131,4 +131,3 @@ jobs:
             cd ${{ env.DEPLOY_DIR }}
             docker compose pull
             docker compose up -d
-            docker image prune -f

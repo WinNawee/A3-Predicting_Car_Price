@@ -8,7 +8,7 @@ bands, and a multinomial Logistic Regression written from scratch
 (softmax, cross entropy loss, gradient descent, optional Ridge penalty)
 predicts which band a car belongs to.
 
-**Live site**: [https://web-st127031.ml.brain.cs.ait.ac.th](https://web-st127031.ml.brain.cs.ait.ac.th)
+**Live site**: [http://ml.brain.cs.ait.ac.th:8031](http://ml.brain.cs.ait.ac.th:8031) (reachable from inside CSIM)
 
 ## Repository contents
 
@@ -21,9 +21,7 @@ predicts which band a car belongs to.
 ├── result/                               # MLflow screenshots
 └── app/                                  # web application (Task 3)
     ├── Dockerfile
-    ├── docker-compose.yaml
-    ├── deploy/
-    │   └── auto_update.sh                # cron job on ml-brain: pull new image, restart
+    ├── docker-compose.yaml               # app + updater (pulls new images on the server)
     ├── tests/
     │   └── test_model.py                 # unit tests (Task 3, Objective 3)
     └── code/
@@ -174,23 +172,25 @@ The model is saved as a small MLflow pyfunc that only contains `prep`
   notice instead of failing.
 * **How the new version reaches the server.** `ml-brain` can only be
   reached from inside CSIM (or through the `bazooka` jump host), so
-  GitHub's runners cannot SSH into it. The server pulls instead: a cron
-  job on `ml-brain` runs `app/deploy/auto_update.sh` every 5 minutes,
-  which does `docker compose pull` and `docker compose up -d`. Compose
-  only recreates the container when the image has changed. Since the
-  image is pushed only after the tests pass, a commit that fails the
-  tests never reaches the live site.
+  GitHub's runners cannot SSH into it. The server pulls instead.
+  `app/docker-compose.yaml` has a second service, `updater`, a small
+  `docker:27-cli` container that every 5 minutes runs `docker compose pull`
+  and `docker compose up -d` for the app. Compose only recreates the app
+  when the image has changed. Since the image is pushed only after the
+  tests pass, a commit that fails the tests never reaches the live site.
+  (The server has no cron, so the loop runs in a container with
+  `restart: unless-stopped`, which also comes back after a reboot.)
 
   ```
   git push -> GitHub Actions: pytest -> build + push image -> Docker Hub
                                                                  |
-  ml-brain (cron, every 5 min): docker compose pull && up -d  <--+
+  ml-brain, updater container (every 5 min): pull && up -d  <----+
   ```
 
   The workflow can also SSH into the server and restart the app right
   away if `SSH_HOST`, `SSH_USER`, `SSH_KEY` (and `SSH_PROXY_HOST` for
   the jump host) are set. I did not set these, so deployment goes
-  through the cron job.
+  through the updater.
 
 ## How to run
 
@@ -239,21 +239,22 @@ pytest app/tests/ -v
 
 ### Deployment
 
-Set up once on `ml-brain` (from inside CSIM):
+The `ml-brain` server no longer runs Traefik (the `web` network from A2
+is gone), so like the other A3 deployments the app is published on its
+own port: **http://ml.brain.cs.ait.ac.th:8031** (inside CSIM).
+
+Set up once on `ml-brain` (from inside CSIM). The server cannot reach
+GitHub, so the compose file is created on the server with the same
+content as `app/docker-compose.yaml`:
 
 ```bash
-ssh st127031@192.41.170.25
+ssh st127031@ml.brain.cs.ait.ac.th
 mkdir -p ~/a3-car-price && cd ~/a3-car-price
-curl -fsSLO https://raw.githubusercontent.com/WinNawee/A3-Predicting_Car_Price/main/app/docker-compose.yaml
-curl -fsSLO https://raw.githubusercontent.com/WinNawee/A3-Predicting_Car_Price/main/app/deploy/auto_update.sh
-chmod +x auto_update.sh
-./auto_update.sh          # first deploy
-(crontab -l 2>/dev/null; echo "*/5 * * * * $HOME/a3-car-price/auto_update.sh >> $HOME/a3-car-price/auto_update.log 2>&1") | crontab -
+nano docker-compose.yaml      # paste app/docker-compose.yaml
+docker compose up -d          # starts the app and the updater
+docker compose ps
 ```
 
 After that every push to `main` that passes the tests is live within
-about 5 minutes. The compose file joins the existing `web` network and
-adds the Traefik labels (`entrypoints=websecure`,
-`certresolver=letsencrypt`), so no port is published directly. It uses
-the same host as A2 (`web-st127031.ml.brain.cs.ait.ac.th`), so the A2
-container was stopped first.
+about 5 minutes, with no manual step. The folder must be named
+`a3-car-price`, because the updater uses that as the compose project name.

@@ -8,18 +8,29 @@ services:
       # unstable; set to "1" to load st127031-a3-model/Staging from the
       # registry instead (falls back to the bundled file if unreachable).
       - USE_MLFLOW_REGISTRY=0
-    networks:
-      - web
-    labels:
-      - "traefik.enable=true"
-      # Same host as the A2 deployment, so the A2 container has to be
-      # stopped first (docker compose down in its folder).
-      - "traefik.http.routers.st127031.rule=Host(`web-st127031.ml.brain.cs.ait.ac.th`)"
-      - "traefik.http.routers.st127031.entrypoints=websecure"
-      - "traefik.http.routers.st127031.tls=true"
-      - "traefik.http.routers.st127031.tls.certresolver=letsencrypt"
-      - "traefik.http.services.st127031.loadbalancer.server.port=8050"
+    # The ml-brain server no longer runs Traefik (there is no "web" network
+    # since A2), so the app is published on its own port like the other A3
+    # deployments: http://ml.brain.cs.ait.ac.th:8031 (inside CSIM).
+    ports:
+      - "8031:8050"
 
-networks:
-  web:
-    external: true
+  # Continuous deployment on the server side. GitHub Actions pushes a new
+  # image to Docker Hub only after the unit tests pass; this small container
+  # checks Docker Hub every 5 minutes and restarts the app when the image
+  # changed (up -d does nothing if it is already up to date). The server has
+  # no cron, so the loop runs in a container that restarts with the server.
+  # Run from a folder named a3-car-price so the project name matches (-p).
+  updater:
+    image: docker:27-cli
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./:/deploy:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        while true; do
+          docker compose -p a3-car-price -f /deploy/docker-compose.yaml pull -q car-price-classifier
+          docker compose -p a3-car-price -f /deploy/docker-compose.yaml up -d car-price-classifier
+          sleep 300
+        done
